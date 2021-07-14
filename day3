@@ -1,0 +1,236 @@
+Lab-1
+-----
+	1. Create fallback table called orders_fb and verify space usage
+		Step 1. CREATE TABLE  orders_fb, fallback
+		(
+		 orderid    INTEGER,
+		 orderdate  DATE,
+		 status     CHAR(1),
+		 orderamt   DECIMAL(10,2)
+		) UNIQUE PRIMARY INDEX (orderid);
+
+		Step 2. INSERT INTO orders_fb 
+		SELECT * FROM orders;
+		
+		Step 3. Compare size of the order and orders table, using following query:
+		
+		select Vproc, TableName,  CurrentPerm
+		from dbc.tablesize
+		WHERE DatabaseName = 'training'
+		and tablename in ('orders', 'orders_fb' ) ;
+
+	2. Create user with only permanent journal
+	 
+		Step 1. Connect as DBC
+		Step 2. Create user training2 with default permanent journal.
+			CREATE USER training_pjuser FROM DBC
+			AS PASSWORD=test, 
+			PERMANENT=2000000, 
+			SPOOL=2000000,
+			TEMPORARY=2000000,
+			NO BEFORE JOURNAL
+			AFTER JOURNAL
+			DEFAULT JOURNAL TABLE = training_pj;
+   
+	3. Associate table creation with PJ
+		Step 1. Connect as training_pjuser
+		Step 2. Create orders_pj table with Permanent Journal
+		CREATE TABLE  orders_pj,
+		WITH JOURNAL TABLE = training_pjuser.training_pj,
+          NO BEFORE JOURNAL, 
+          AFTER JOURNAL
+		(
+		 orderid    INTEGER,
+		 orderdate  DATE,
+		 status     CHAR(1),
+		 orderamt   DECIMAL(10,2)
+		) UNIQUE PRIMARY INDEX (orderid);	
+		
+		Load following 10 rows:
+		INSERT INTO orders_pj VALUES (1,'2020-01-01','A',659);
+		INSERT INTO orders_pj VALUES (2,'2020-01-01','A',366);
+		INSERT INTO orders_pj VALUES (3,'2020-01-01','A',350);
+		INSERT INTO orders_pj VALUES (4,'2020-01-01','A',212);
+		INSERT INTO orders_pj VALUES (5,'2020-01-01','A',491);
+		INSERT INTO orders_pj VALUES (6,'2020-01-01','A',870);
+		INSERT INTO orders_pj VALUES (7,'2020-01-01','A',997);
+		INSERT INTO orders_pj VALUES (8,'2020-01-01','A',807);
+		INSERT INTO orders_pj VALUES (9,'2020-01-01','A',943);
+		INSERT INTO orders_pj VALUES (10,'2020-01-01','A',241);		
+
+
+
+Lab-2
+-----
+		Session 1(S1):
+			.SET SESSION TRANSACTION ANSI;
+			.logon 127.0.0.1/training
+		Session 2(S2)
+			.logon 127.0.0.1/training
+
+		S1. 1.     INSERT INTO student VALUES 	(101,'Shyam',CAST('16-DEC-1982' AS DATE FORMAT 'DD-MMM-YYYY'));
+		S2. 2    SELECT * FROM student; -- Observe query waiting
+		S1. 3.     COMMIT
+		S2. 4.     See query result 
+		S1. 5.     	   INSERT INTO student VALUES (102,'Hari',CAST('11-SEP-1982' AS DATE FORMAT 'DD-MMM-YYYY'));
+		INSERT INTO student VALUES (103,'Ram',CAST('05-JUL-1983' AS DATE FORMAT 'DD-MMM-YYYY'));	 
+		S2.6. LOCKING  ROW FOR ACCESS  SELECT * FROM student;
+		S1. 7.  ROLLBACK;
+		S2.8.   Select * from student ; 
+		S1. 9.     UPDATE student SET DOB = '1985-10-12';
+		S2. 10.    UPDATE student SET DOB = '1995-10-12';
+		S2. 11   Observe that update keeps waiting
+		S1. 11.   COMMIT;
+		S1. 12.  UPDATE student SET DOB = '1984-10-12';
+		S2.13.  LOCKING FOR WRITE NOWAIT UPDATE  student SET DOB = '1994-10-12'  ;
+
+
+DATA Dictionary
+================
+Lab-3 Do it yourself
+	1. Find children of DBC database
+	2. Find space usage of DBC
+	3. Find Database, users for training user
+	4. Find table under training using Data Dictionary tables
+
+ARC
+================================
+Lab-4
+-----
+	1.  Archive training user
+	
+		Step 1. Write archive script in /root/training/script 
+		
+		bkup_training.arc
+		------------------
+		LOGON 127.0.0.1/training, test ;
+		ARCHIVE DATA TABLES (TRAINING)
+		, ABORT
+		, RELEASE LOCK
+		, FILE = TRNGUSER ;
+		LOGOFF;
+		
+		Step 2: Go to data folder where archive file will be created
+		cd ../data
+		
+		Step 3. Execute backup command
+		arcmain < ../script/bkup_training.arc
+		
+		
+	2. Archive training user by excluding table which are unwanted
+		Step 1. Identify tables you do not need to be exported
+		   Example. orders_fb
+		
+		Step 2. Write archive script in /root/training/script 
+		
+		bkup_trng_excl_tbl.arc
+		------------------
+		LOGON 127.0.0.1/training, test ;
+		ARCHIVE DATA TABLES (TRAINING) 
+		(EXCLUDE TABLES (orders_fb))
+		, ABORT
+		, RELEASE LOCK
+		, FILE = TRNUSRET ;
+		LOGOFF;
+		
+		Step 3: Go to data folder where archive file will be created
+		cd ../data
+		
+		Step 4. Execute backup command
+		arcmain < ../script/bkup_trng_excl_tbl.arc
+		
+	3. 	Archive specific table
+		Step 1. Identify tables you need to be exported
+		   Example. student
+		
+		Step 2. Write archive script in /root/training/script 
+		
+		bkup_trng_sel_tbl.arc
+		------------------
+
+		LOGON 127.0.0.1/training, test ;
+		ARCHIVE DATA TABLES (TRAINING.student) 
+		, ABORT
+		, RELEASE LOCK
+		, FILE = TRNUSRST ;
+		LOGOFF;		
+		Step 3: Go to data folder where archive file will be created
+		cd ../data
+		
+		Step 4. Execute backup command
+		arcmain < ../script/bkup_trng_sel_tbl.arc	
+		
+
+	4. 	Archive journal table
+	
+		Step 1. Write archive script in /root/training/script 
+		
+		bkup_trng_pj_tbl.arc
+		------------------
+
+		LOGON 127.0.0.1/training_pjuser, test ;
+		ARCHIVE JOURNAL TABLES (training_pjuser.training_pj) 
+		, ABORT
+		, RELEASE LOCK
+		, FILE = TRNPJT ;
+		LOGOFF;	
+		
+		Step 3: Go to data folder where archive file will be created
+		cd ../data
+		
+		Step 4. Execute backup command
+		arcmain < ../script/bkup_trng_pj_tbl.arc	
+		
+
+		
+		
+Lab-5
+------
+	1. Restore 'training' user
+	rstr_training.arc
+
+	2. Restore only student table from database archive
+	rstr_trng_st.arc
+
+	3. Restore journal table
+
+	rstr_trng_pj_tbl.arc
+	4. Copy Student Table to training
+		Step 1. DROP TABLE student;
+		Step 2. Write copy script
+			copy_trng_st.arc
+
+			
+
+			
+
+LAB-6
+------
+
+CREATE TABLE  sales,
+WITH JOURNAL TABLE = training_pjuser.training2_pj
+(sales_id INT);
+
+INSERT INTO sales (sales_id) VALUES (10);
+INSERT INTO sales (sales_id) VALUES (20);
+
+CHECKPOINT training2_pj, NAMED Chkpt1;
+
+INSERT INTO sales (sales_id) VALUES (30);
+INSERT INTO sales (sales_id) VALUES (40);
+
+CHECKPOINT training2_pj, NAMED Chkpt2;
+
+INSERT INTO sales (sales_id) VALUES (50);
+INSERT INTO sales (sales_id) VALUES (60);
+
+CHECKPOINT training2_pj, NAMED Chkpt3;	
+
+ROLLBACK training_pjuser.student, to Chkpt2,
+release lock, use current journal;
+
+
+DELETE RESTORED JOURNAL, (training_pjuser);
+
+	
+{"mode":"full","isActive":false}
